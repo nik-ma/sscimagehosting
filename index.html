@@ -42,12 +42,19 @@
 
     <div class="form-group">
         <label>Year</label>
-        <select id="examYear">
-            <option value="2024">2024</option>
-            <option value="2025">2025</option>
-            <option value="2026">2026</option>
-        </select>
+        <select id="examYear"></select>
     </div>
+    <script>
+        // Populate year dropdown from 2010 to current year
+        const yearSelect = document.getElementById('examYear');
+        const currentYear = new Date().getFullYear();
+        for (let y = currentYear; y >= 2010; y--) {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            yearSelect.appendChild(opt);
+        }
+    </script>
 
     <div class="form-group">
         <label>Tier</label>
