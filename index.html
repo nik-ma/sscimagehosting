@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSC Question Uploader</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; font-weight: bold; margin-bottom: 0.5rem; }
+        select, input, button { width: 100%; padding: 0.5rem; font-size: 1rem; }
+        button { background-color: #2ea44f; color: white; border: none; cursor: pointer; margin-top: 1rem; }
+        button:hover { background-color: #2c974b; }
+        #status { margin-top: 1rem; padding: 1rem; border-radius: 4px; display: none; }
+        .success { background-color: #d0f0c0; color: #1a5c20; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .preview { margin-top: 10px; max-width: 100px; display: block; }
+    </style>
+</head>
+<body>
+
+    <h2>SSC Image Uploader</h2>
+
+    <div class="form-group">
+        <label>GitHub Personal Access Token (PAT)</label>
+        <input type="password" id="githubToken" placeholder="ghp_..." value=""> 
+        <small style="color:gray;">Allow "repo" scope. Don't share this URL if hosted publicly.</small>
+    </div>
+    
+    <hr>
+
+    <div class="form-group">
+        <label>Exam Name</label>
+        <select id="examName">
+            <option value="cgl">CGL</option>
+            <option value="chsl">CHSL</option>
+            <option value="mts">MTS</option>
+            <option value="cpo">CPO</option>
+            <option value="gd">GD</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Year</label>
+        <select id="examYear">
+            <option value="2024">2024</option>
+            <option value="2025">2025</option>
+            <option value="2026">2026</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Tier</label>
+        <select id="tier">
+            <option value="tier1">Tier 1</option>
+            <option value="tier2">Tier 2</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Shift</label>
+        <select id="shift">
+            <option value="shift1">Shift 1</option>
+            <option value="shift2">Shift 2</option>
+            <option value="shift3">Shift 3</option>
+            <option value="shift4">Shift 4</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Language</label>
+        <select id="lang">
+            <option value="en">English</option>
+            <option value="hi">Hindi</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Question Number</label>
+        <input type="number" id="qNumber" placeholder="e.g. 15">
+    </div>
+
+    <div class="form-group">
+        <label>File Type (Naming Convention)</label>
+        <select id="fileSuffix">
+            <option value="base">Main Question (Q_No.png)</option>
+            <option value="a_figure">Option A Figure</option>
+            <option value="b_figure">Option B Figure</option>
+            <option value="c_figure">Option C Figure</option>
+            <option value="d_figure">Option D Figure</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Select Image</label>
+        <input type="file" id="fileInput" accept="image/*">
+        <img id="imagePreview" class="preview" src="" alt="">
+    </div>
+
+    <button onclick="uploadImage()">Upload to GitHub</button>
+
+    <div id="status"></div>
+
+    <script>
+        // CONFIG
+        const REPO_OWNER = 'nik-ma';
+        const REPO_NAME = 'images';
+
+        // PREVIEW IMAGE
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if(file){
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('imagePreview').src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        async function uploadImage() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.style.display = 'block';
+            statusDiv.className = ''; 
+            statusDiv.textContent = 'Preparing upload...';
+
+            // 1. Gather Data
+            const token = document.getElementById('githubToken').value;
+            const exam = document.getElementById('examName').value;
+            const year = document.getElementById('examYear').value;
+            const tier = document.getElementById('tier').value;
+            const shift = document.getElementById('shift').value;
+            const lang = document.getElementById('lang').value;
+            const qNum = document.getElementById('qNumber').value;
+            const suffix = document.getElementById('fileSuffix').value;
+            const fileInput = document.getElementById('fileInput');
+
+            if (!token || !qNum || !fileInput.files[0]) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = 'Error: Token, Question Number, and File are required.';
+                return;
+            }
+
+            // 2. Construct Filename and Path
+            // Folder: ssc/exam-name/year/tier/shift/lang/
+            // File: question_number.png OR question_number_suffix.png
+            
+            let fileName = `${qNum}`;
+            if (suffix !== 'base') {
+                fileName += `_${suffix}`;
+            }
+            fileName += `.png`; // Assuming PNG, but allows standard uploads
+
+            const path = `ssc/${exam}/${year}/${tier}/${shift}/${lang}/${fileName}`;
+            const apiUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
+
+            // 3. Convert File to Base64
+            const file = fileInput.files[0];
+            const toBase64 = file => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(',')[1]); // Remove "data:image/png;base64," prefix
+                reader.onerror = error => reject(error);
+            });
+
+            try {
+                const base64Content = await toBase64(file);
+
+                // 4. Check if file exists (to get SHA for update)
+                let sha = null;
+                try {
+                    const checkRes = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/vnd.github+json'
+                        }
+                    });
+                    if (checkRes.ok) {
+                        const data = await checkRes.json();
+                        sha = data.sha;
+                        console.log("File exists, overwriting SHA:", sha);
+                    }
+                } catch (e) {
+                    // Ignore error if file doesn't exist
+                }
+
+                // 5. Upload (PUT)
+                const payload = {
+                    message: `Add/Update ${exam} ${year} Q${qNum} (${lang})`,
+                    content: base64Content
+                };
+                if (sha) payload.sha = sha;
+
+                statusDiv.textContent = 'Uploading...';
+                
+                const response = await fetch(apiUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/vnd.github+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    statusDiv.className = 'success';
+                    const cdnUrl = `https://cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}/${path}`;
+                    statusDiv.innerHTML = `✅ Upload Successful!<br><strong>Path:</strong> ${path}<br><strong>CDN Link:</strong> <a href="${cdnUrl}" target="_blank">Click here</a>`;
+                    
+                    // Optional: Reset file input after success
+                    // fileInput.value = ''; 
+                } else {
+                    throw new Error(result.message || 'Upload failed');
+                }
+
+            } catch (error) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
