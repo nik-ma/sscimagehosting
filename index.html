@@ -5,46 +5,152 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SSC Question Uploader</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: #f0f2f5; height: 100vh; overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.75rem 1.5rem; text-align: center; }
+        .header h2 { margin: 0; font-size: 1.25rem; }
+        .main { display: flex; height: calc(100vh - 52px); }
+        .left-panel { flex: 1; background: white; padding: 1.5rem; overflow-y: auto; border-right: 1px solid #ddd; }
+        .right-panel { flex: 1; padding: 1rem; overflow-y: auto; background: #f8f9fa; }
+        .form-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+        .form-row .form-group { flex: 1; }
         .form-group { margin-bottom: 1rem; }
-        label { display: block; font-weight: bold; margin-bottom: 0.5rem; }
-        select, input, button { width: 100%; padding: 0.5rem; font-size: 1rem; }
-        button { background-color: #2ea44f; color: white; border: none; cursor: pointer; margin-top: 1rem; }
-        button:hover { background-color: #2c974b; }
-        #status { margin-top: 1rem; padding: 1rem; border-radius: 4px; display: none; }
+        label { display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem; color: #444; }
+        select, input { width: 100%; padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        select:focus, input:focus { outline: none; border-color: #667eea; }
+        button.upload-btn { width: 100%; padding: 0.75rem; font-size: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; margin-top: 1rem; }
+        button.upload-btn:hover { opacity: 0.9; }
+        #status { margin-top: 1rem; padding: 0.75rem; border-radius: 4px; display: none; font-size: 0.9rem; }
         .success { background-color: #d0f0c0; color: #1a5c20; }
         .error { background-color: #f8d7da; color: #721c24; }
-        .preview { margin-top: 10px; max-width: 100px; display: block; }
+        .preview { margin-top: 10px; max-width: 200px; max-height: 150px; display: block; border: 1px solid #ddd; border-radius: 4px; }
+        .warning-note { background-color: #fff3cd; border-left: 4px solid #ffc107; color: #856404; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; font-size: 0.75rem; }
+        .warning-note strong { color: #d63031; }
+        .recent-uploads h3 { margin: 0 0 1rem 0; color: #333; font-size: 1rem; }
+        .upload-grid { display: flex; flex-direction: column; gap: 1rem; }
+        .upload-item { background: white; border-radius: 8px; padding: 0.75rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .upload-item img { width: 100%; max-height: 200px; object-fit: contain; border: 1px solid #eee; border-radius: 4px; background: #fafafa; }
+        .upload-item-info { margin-top: 0.5rem; font-size: 0.8rem; overflow: hidden; }
+        .upload-item-info p { margin: 2px 0; color: #666; word-break: break-all; }
+        .upload-item-info .filename { font-weight: 600; color: #333; font-size: 0.85rem; }
+        .no-uploads { color: #999; font-style: italic; text-align: center; padding: 2rem; }
+        .token-group { background: #f8f9fa; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; }
+        .token-group small { color: #888; font-size: 0.7rem; }
+        hr { border: none; border-top: 1px solid #eee; margin: 0.75rem 0; }
     </style>
 </head>
 <body>
-
-    <h2>SSC Image Uploader</h2>
-
-    <div class="form-group">
-        <label>GitHub Personal Access Token (PAT)</label>
-        <input type="password" id="githubToken" placeholder="ghp_..." value=""> 
-        <small style="color:gray;">Allow "repo" scope. Don't share this URL if hosted publicly.</small>
-    </div>
-    
-    <hr>
-
-    <div class="form-group">
-        <label>Exam Name</label>
-        <select id="examName">
-            <option value="cgl">CGL</option>
-            <option value="chsl">CHSL</option>
-            <option value="mts">MTS</option>
-            <option value="cpo">CPO</option>
-            <option value="gd">GD</option>
-        </select>
+    <div class="header">
+        <h2>📤 SSC Image Uploader</h2>
     </div>
 
-    <div class="form-group">
-        <label>Year</label>
-        <select id="examYear"></select>
+    <div class="main">
+        <!-- Left Panel: Form -->
+        <div class="left-panel">
+            <div class="warning-note">
+                <strong>⚠️ IMPORTANT:</strong> Wrong image? Re-upload with <strong>same values</strong> to replace it automatically.
+            </div>
+
+            <div class="token-group">
+                <label>GitHub Token (PAT)</label>
+                <input type="password" id="githubToken" placeholder="ghp_...">
+                <small>Allow "repo" scope</small>
+            </div>
+
+            <hr>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Exam</label>
+                    <select id="examName">
+                        <option value="cgl">CGL</option>
+                        <option value="chsl">CHSL</option>
+                        <option value="mts">MTS</option>
+                        <option value="cpo">CPO</option>
+                        <option value="gd">GD</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Year</label>
+                    <select id="examYear"></select>
+                </div>
+                <div class="form-group">
+                    <label>Tier</label>
+                    <select id="tier">
+                        <option value="tier1">Tier 1</option>
+                        <option value="tier2">Tier 2</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Exam Date</label>
+                    <input type="date" id="examDate">
+                </div>
+                <div class="form-group">
+                    <label>Shift</label>
+                    <select id="shift">
+                        <option value="shift1">Shift 1</option>
+                        <option value="shift2">Shift 2</option>
+                        <option value="shift3">Shift 3</option>
+                        <option value="shift4">Shift 4</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Language</label>
+                    <select id="lang">
+                        <option value="en">English</option>
+                        <option value="hi">Hindi</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Question ID</label>
+                    <input type="text" id="qId" placeholder="abc123">
+                </div>
+                <div class="form-group">
+                    <label>File Type</label>
+                    <select id="fileSuffix">
+                        <option value="base">Main Question</option>
+                        <option value="a_figure">Option A</option>
+                        <option value="b_figure">Option B</option>
+                        <option value="c_figure">Option C</option>
+                        <option value="d_figure">Option D</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Select Image</label>
+                <input type="file" id="fileInput" accept="image/*">
+                <img id="imagePreview" class="preview" src="" alt="">
+            </div>
+
+            <button class="upload-btn" onclick="uploadImage()">⬆️ Upload to GitHub</button>
+
+            <div id="status"></div>
+        </div>
+
+        <!-- Right Panel: Recent Uploads -->
+        <div class="right-panel">
+            <div class="recent-uploads">
+                <h3>📷 Recent Uploads</h3>
+                <div id="recentUploads" class="upload-grid">
+                    <p class="no-uploads">No uploads yet. Start uploading!</p>
+                </div>
+            </div>
+        </div>
     </div>
+
     <script>
+        // CONFIG
+        const REPO_OWNER = 'nik-ma';
+        const REPO_NAME = 'images';
+        let recentUploads = [];
+
         // Populate year dropdown from 2010 to current year
         const yearSelect = document.getElementById('examYear');
         const currentYear = new Date().getFullYear();
@@ -54,64 +160,6 @@
             opt.textContent = y;
             yearSelect.appendChild(opt);
         }
-    </script>
-
-    <div class="form-group">
-        <label>Tier</label>
-        <select id="tier">
-            <option value="tier1">Tier 1</option>
-            <option value="tier2">Tier 2</option>
-        </select>
-    </div>
-
-    <div class="form-group">
-        <label>Shift</label>
-        <select id="shift">
-            <option value="shift1">Shift 1</option>
-            <option value="shift2">Shift 2</option>
-            <option value="shift3">Shift 3</option>
-            <option value="shift4">Shift 4</option>
-        </select>
-    </div>
-
-    <div class="form-group">
-        <label>Language</label>
-        <select id="lang">
-            <option value="en">English</option>
-            <option value="hi">Hindi</option>
-        </select>
-    </div>
-
-    <div class="form-group">
-        <label>Question Number</label>
-        <input type="number" id="qNumber" placeholder="e.g. 15">
-    </div>
-
-    <div class="form-group">
-        <label>File Type (Naming Convention)</label>
-        <select id="fileSuffix">
-            <option value="base">Main Question (Q_No.png)</option>
-            <option value="a_figure">Option A Figure</option>
-            <option value="b_figure">Option B Figure</option>
-            <option value="c_figure">Option C Figure</option>
-            <option value="d_figure">Option D Figure</option>
-        </select>
-    </div>
-
-    <div class="form-group">
-        <label>Select Image</label>
-        <input type="file" id="fileInput" accept="image/*">
-        <img id="imagePreview" class="preview" src="" alt="">
-    </div>
-
-    <button onclick="uploadImage()">Upload to GitHub</button>
-
-    <div id="status"></div>
-
-    <script>
-        // CONFIG
-        const REPO_OWNER = 'nik-ma';
-        const REPO_NAME = 'images';
 
         // PREVIEW IMAGE
         document.getElementById('fileInput').addEventListener('change', function(e) {
@@ -125,89 +173,94 @@
             }
         });
 
+        function updateRecentUploads(imageData, path, cdnUrl) {
+            recentUploads.unshift({ imageData, path, cdnUrl, time: new Date().toLocaleTimeString() });
+            if (recentUploads.length > 5) recentUploads.pop();
+            
+            const container = document.getElementById('recentUploads');
+            if (recentUploads.length === 0) {
+                container.innerHTML = '<p class="no-uploads">No uploads yet. Start uploading!</p>';
+                return;
+            }
+            
+            container.innerHTML = recentUploads.map((item, idx) => `
+                <div class="upload-item">
+                    <img src="${item.imageData}" alt="Upload ${idx + 1}">
+                    <div class="upload-item-info">
+                        <p class="filename">${item.path.split('/').pop()}</p>
+                        <p>${item.path}</p>
+                        <p>⏰ ${item.time}</p>
+                        <a href="${item.cdnUrl}" target="_blank">View CDN →</a>
+                    </div>
+                </div>
+            `).join('');
+        }
+
         async function uploadImage() {
             const statusDiv = document.getElementById('status');
             statusDiv.style.display = 'block';
             statusDiv.className = ''; 
             statusDiv.textContent = 'Preparing upload...';
 
-            // 1. Gather Data
             const token = document.getElementById('githubToken').value;
             const exam = document.getElementById('examName').value;
             const year = document.getElementById('examYear').value;
             const tier = document.getElementById('tier').value;
+            const examDateInput = document.getElementById('examDate').value;
             const shift = document.getElementById('shift').value;
             const lang = document.getElementById('lang').value;
-            const qNum = document.getElementById('qNumber').value;
+            const qId = document.getElementById('qId').value;
             const suffix = document.getElementById('fileSuffix').value;
             const fileInput = document.getElementById('fileInput');
 
-            if (!token || !qNum || !fileInput.files[0]) {
+            if (!token || !qId || !examDateInput || !fileInput.files[0]) {
                 statusDiv.className = 'error';
-                statusDiv.textContent = 'Error: Token, Question Number, and File are required.';
+                statusDiv.textContent = 'Error: Token, Exam Date, Question ID, and File are required.';
                 return;
             }
 
-            // 2. Construct Filename and Path
-            // Folder: ssc/exam-name/year/tier/shift/lang/
-            // File: question_number.png OR question_number_suffix.png
+            const dateParts = examDateInput.split('-');
+            const examDate = `${dateParts[2]}_${dateParts[1]}_${dateParts[0]}`;
             
-            let fileName = `${qNum}`;
-            if (suffix !== 'base') {
-                fileName += `_${suffix}`;
-            }
-            fileName += `.png`; // Assuming PNG, but allows standard uploads
+            let fileName = `${qId}`;
+            if (suffix !== 'base') fileName += `_${suffix}`;
+            fileName += `.png`;
 
-            const path = `ssc/${exam}/${year}/${tier}/${shift}/${lang}/${fileName}`;
+            const path = `ssc/${exam}/${year}/${tier}/${examDate}/${shift}/${lang}/${fileName}`;
             const apiUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
 
-            // 3. Convert File to Base64
             const file = fileInput.files[0];
             const toBase64 = file => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result.split(',')[1]); // Remove "data:image/png;base64," prefix
+                reader.onload = () => resolve(reader.result.split(',')[1]);
                 reader.onerror = error => reject(error);
             });
 
             try {
                 const base64Content = await toBase64(file);
+                const imageDataUrl = document.getElementById('imagePreview').src;
 
-                // 4. Check if file exists (to get SHA for update)
                 let sha = null;
                 try {
                     const checkRes = await fetch(apiUrl, {
                         method: 'GET',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Accept': 'application/vnd.github+json'
-                        }
+                        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
                     });
                     if (checkRes.ok) {
                         const data = await checkRes.json();
                         sha = data.sha;
-                        console.log("File exists, overwriting SHA:", sha);
                     }
-                } catch (e) {
-                    // Ignore error if file doesn't exist
-                }
+                } catch (e) {}
 
-                // 5. Upload (PUT)
-                const payload = {
-                    message: `Add/Update ${exam} ${year} Q${qNum} (${lang})`,
-                    content: base64Content
-                };
+                const payload = { message: `Add/Update ${exam} ${year} ${qId} (${lang})`, content: base64Content };
                 if (sha) payload.sha = sha;
 
                 statusDiv.textContent = 'Uploading...';
                 
                 const response = await fetch(apiUrl, {
                     method: 'PUT',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Accept': 'application/vnd.github+json',
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
 
@@ -216,10 +269,12 @@
                 if (response.ok) {
                     statusDiv.className = 'success';
                     const cdnUrl = `https://cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}/${path}`;
-                    statusDiv.innerHTML = `✅ Upload Successful!<br><strong>Path:</strong> ${path}<br><strong>CDN Link:</strong> <a href="${cdnUrl}" target="_blank">Click here</a>`;
+                    const purgeUrl = `https://purge.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}/${path}`;
+                    statusDiv.innerHTML = `✅ Uploaded! <a href="${cdnUrl}" target="_blank">CDN</a> | <a href="${purgeUrl}" target="_blank">Purge Cache</a>`;
                     
-                    // Optional: Reset file input after success
-                    // fileInput.value = ''; 
+                    updateRecentUploads(imageDataUrl, path, cdnUrl);
+                    fileInput.value = '';
+                    document.getElementById('imagePreview').src = '';
                 } else {
                     throw new Error(result.message || 'Upload failed');
                 }
