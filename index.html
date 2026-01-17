@@ -3,287 +3,453 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SSC Question Uploader</title>
+    <title>SSC Cropper (Fixed Nav & Count)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+
     <style>
+        :root { --primary: #2563eb; --bg: #f3f4f6; --text: #1f2937; }
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: #f0f2f5; height: 100vh; overflow: hidden; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.75rem 1.5rem; text-align: center; }
-        .header h2 { margin: 0; font-size: 1.25rem; }
-        .main { display: flex; height: calc(100vh - 52px); }
-        .left-panel { flex: 1; background: white; padding: 1.5rem; overflow-y: auto; border-right: 1px solid #ddd; }
-        .right-panel { flex: 1; padding: 1rem; overflow-y: auto; background: #f8f9fa; }
-        .form-row { display: flex; gap: 1rem; margin-bottom: 1rem; }
-        .form-row .form-group { flex: 1; }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem; color: #444; }
-        select, input { width: 100%; padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
-        select:focus, input:focus { outline: none; border-color: #667eea; }
-        button.upload-btn { width: 100%; padding: 0.75rem; font-size: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; margin-top: 1rem; }
-        button.upload-btn:hover { opacity: 0.9; }
-        #status { margin-top: 1rem; padding: 0.75rem; border-radius: 4px; display: none; font-size: 0.9rem; }
-        .success { background-color: #d0f0c0; color: #1a5c20; }
-        .error { background-color: #f8d7da; color: #721c24; }
-        .preview { margin-top: 10px; max-width: 200px; max-height: 150px; display: block; border: 1px solid #ddd; border-radius: 4px; }
-        .warning-note { background-color: #fff3cd; border-left: 4px solid #ffc107; color: #856404; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; font-size: 0.75rem; }
-        .warning-note strong { color: #d63031; }
-        .recent-uploads h3 { margin: 0 0 1rem 0; color: #333; font-size: 1rem; }
-        .upload-grid { display: flex; flex-direction: column; gap: 1rem; }
-        .upload-item { background: white; border-radius: 8px; padding: 0.75rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .upload-item img { width: 100%; max-height: 200px; object-fit: contain; border: 1px solid #eee; border-radius: 4px; background: #fafafa; }
-        .upload-item-info { margin-top: 0.5rem; font-size: 0.8rem; overflow: hidden; }
-        .upload-item-info p { margin: 2px 0; color: #666; word-break: break-all; }
-        .upload-item-info .filename { font-weight: 600; color: #333; font-size: 0.85rem; }
-        .no-uploads { color: #999; font-style: italic; text-align: center; padding: 2rem; }
-        .token-group { background: #f8f9fa; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; }
-        .token-group small { color: #888; font-size: 0.7rem; }
-        hr { border: none; border-top: 1px solid #eee; margin: 0.75rem 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; height: 100vh; background: var(--bg); color: var(--text); display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Header */
+        header { background: #1e293b; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; height: 50px; flex-shrink: 0; }
+        header h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+        .kbd { background: #334155; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; }
+        .badge { background: #10b981; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; margin-left: 10px; color: white; font-weight: bold; }
+
+        /* Layout */
+        .workspace { display: grid; grid-template-columns: 1fr 350px; height: calc(100vh - 50px); }
+
+        /* PDF Viewer */
+        .pdf-container { position: relative; background: #525252; overflow: auto; display: flex; justify-content: center; padding: 2rem; }
+        .canvas-wrapper { position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.5); background: white; cursor: crosshair; margin-bottom: 60px; }
+        canvas { display: block; }
+
+        /* --- TEXT LAYER (Fixed for Selection) --- */
+        .textLayer { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; opacity: 0.1; pointer-events: none; }
+        .textLayer span { line-height: 1.0 !important; transform-origin: 0% 0%; }
+        
+        /* When Text Mode is Active */
+        .canvas-wrapper.text-mode .textLayer { 
+            pointer-events: auto; 
+            z-index: 999; /* Sit on top of everything */
+            opacity: 1; 
+            background: rgba(59, 130, 246, 0.05); 
+            cursor: text;
+        }
+        
+        /* Selection Box */
+        #selectionBox { position: absolute; border: 2px solid #ef4444; background: rgba(239, 68, 68, 0.1); display: none; pointer-events: none; z-index: 50; }
+
+        /* Floating Controls */
+        .pdf-controls {
+            position: fixed; bottom: 20px; left: calc(50% - 175px);
+            background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px;
+            display: flex; gap: 12px; align-items: center; z-index: 200; color: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+        }
+        .pdf-controls button { background: transparent; border: none; color: white; cursor: pointer; font-size: 1.2rem; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+        .pdf-controls button:hover { background: rgba(255,255,255,0.2); }
+
+        /* Sidebar */
+        .sidebar { background: #fff; border-left: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow-y: auto; }
+        .panel-section { padding: 1rem; border-bottom: 1px solid #e5e7eb; }
+        input, select { width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+        .task-area { background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 1rem; margin-top: 0.5rem; transition: background 0.2s; position: relative; }
+        .task-area.flash { animation: flashGreen 0.5s ease-out; }
+        @keyframes flashGreen { 0% { background-color: #86efac; } 100% { background-color: #eff6ff; } }
+
+        #cropPreview { width: 100%; height: 150px; object-fit: contain; background: #fff; border: 1px solid #ddd; margin-bottom: 10px; }
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+        .upload-btn { flex: 2; background: var(--primary); color: white; padding: 12px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
+        .upload-btn:hover { background: #1d4ed8; }
+        .upload-btn:disabled { background: #9ca3af; }
+        .clear-btn { flex: 1; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; font-weight: 600; cursor: pointer; }
+
+        .hidden { display: none; }
+        .mode-indicator { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: #2563eb; color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 300; }
+        .canvas-wrapper.text-mode + .mode-indicator { opacity: 1; }
+        .auto-filled { border-color: #10b981 !important; background-color: #ecfdf5; transition: 0.3s; }
+
+        /* History List */
+        .history-list { list-style: none; padding: 0; margin: 0; }
+        .history-item { display: flex; justify-content: space-between; font-size: 0.8rem; padding: 6px 0; border-bottom: 1px solid #f0f0f0; color: #4b5563; }
+        
+        /* Modal */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 400px; border-radius: 8px; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h2>📤 SSC Image Uploader</h2>
-    </div>
 
-    <div class="main">
-        <!-- Left Panel: Form -->
-        <div class="left-panel">
-            <div class="warning-note">
-                <strong>⚠️ IMPORTANT:</strong> Wrong image? Re-upload with <strong>same values</strong> to replace it automatically.
+    <header>
+        <h2>⚡ SSC Cropper <span class="badge">V4.1</span></h2>
+        <div style="display:flex; gap:15px; align-items:center;">
+            <button onclick="showReport()" style="background:#4b5563; border:none; color:white; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:0.8rem;">📊 Report</button>
+            <span style="font-size: 0.85rem; opacity: 0.9;">Hold <span class="kbd">Ctrl</span> to Select • <span class="kbd">Esc</span> to Clear</span>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <div class="pdf-container">
+            <div class="canvas-wrapper" id="canvasWrapper">
+                <canvas id="pdfCanvas"></canvas>
+                <div id="textLayer" class="textLayer"></div>
+                <div id="selectionBox"></div>
             </div>
+            
+            <div class="mode-indicator">TEXT MODE: Highlight or Click ID</div>
 
-            <div class="token-group">
-                <label>GitHub Token (PAT)</label>
-                <input type="password" id="githubToken" placeholder="ghp_...">
-                <small>Allow "repo" scope</small>
+            <div class="pdf-controls">
+                <label for="pdfInput" style="cursor: pointer;" title="Open PDF">📂</label>
+                <input type="file" id="pdfInput" accept=".pdf" class="hidden">
+                <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.3); margin: 0 4px;"></div>
+                <button onclick="changePage(-1)" title="Prev">←</button>
+                <span id="pageIndicator" style="font-size: 0.9rem; min-width: 60px; text-align: center;">-- / --</span>
+                <button onclick="changePage(1)" title="Next">→</button>
+                <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.3); margin: 0 4px;"></div>
+                <button onclick="zoom(-0.2)">➖</button>
+                <button onclick="zoom(0.2)">➕</button>
             </div>
-
-            <hr>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Exam</label>
-                    <select id="examName">
-                        <option value="cgl">CGL</option>
-                        <option value="chsl">CHSL</option>
-                        <option value="mts">MTS</option>
-                        <option value="cpo">CPO</option>
-                        <option value="gd">GD</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Year</label>
-                    <select id="examYear"></select>
-                </div>
-                <div class="form-group">
-                    <label>Tier</label>
-                    <select id="tier">
-                        <option value="tier1">Tier 1</option>
-                        <option value="tier2">Tier 2</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Exam Date</label>
-                    <input type="date" id="examDate">
-                </div>
-                <div class="form-group">
-                    <label>Shift</label>
-                    <select id="shift">
-                        <option value="shift1">Shift 1</option>
-                        <option value="shift2">Shift 2</option>
-                        <option value="shift3">Shift 3</option>
-                        <option value="shift4">Shift 4</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Language</label>
-                    <select id="lang">
-                        <option value="en">English</option>
-                        <option value="hi">Hindi</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Question ID</label>
-                    <input type="text" id="qId" placeholder="abc123">
-                </div>
-                <div class="form-group">
-                    <label>File Type</label>
-                    <select id="fileSuffix">
-                        <option value="base">Main Question</option>
-                        <option value="a_figure">Option A</option>
-                        <option value="b_figure">Option B</option>
-                        <option value="c_figure">Option C</option>
-                        <option value="d_figure">Option D</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>Select Image</label>
-                <input type="file" id="fileInput" accept="image/*">
-                <img id="imagePreview" class="preview" src="" alt="">
-            </div>
-
-            <button class="upload-btn" onclick="uploadImage()">⬆️ Upload to GitHub</button>
-
-            <div id="status"></div>
         </div>
 
-        <!-- Right Panel: Recent Uploads -->
-        <div class="right-panel">
-            <div class="recent-uploads">
-                <h3>📷 Recent Uploads</h3>
-                <div id="recentUploads" class="upload-grid">
-                    <p class="no-uploads">No uploads yet. Start uploading!</p>
+        <div class="sidebar">
+            <div class="panel-section">
+                <div class="panel-title"><span>1. Tracking</span></div>
+                <input type="text" id="workerName" placeholder="Enter Your Name (Required)" style="border: 2px solid #2563eb; background: #eff6ff;" onchange="saveConfig()">
+                <input type="password" id="ghToken" placeholder="GitHub Token" onchange="saveConfig()">
+                
+                <div class="grid-2">
+                    <select id="exam" onchange="saveConfig()"><option value="cgl">CGL</option><option value="chsl">CHSL</option><option value="mts">MTS</option><option value="cpo">CPO</option><option value="selection">Selection Post</option></select>
+                    <select id="year" onchange="saveConfig()"></select>
                 </div>
+                <div class="grid-2">
+                    <select id="tier" onchange="saveConfig()"><option value="tier1">Tier 1</option><option value="tier2">Tier 2</option></select>
+                    <select id="lang" onchange="saveConfig()"><option value="en">English</option><option value="hi">Hindi</option></select>
+                </div>
+                <div class="grid-2">
+                    <input type="date" id="examDate" onchange="saveConfig()">
+                    <select id="shift" onchange="saveConfig()"><option value="shift1">Shift 1</option><option value="shift2">Shift 2</option><option value="shift3">Shift 3</option><option value="shift4">Shift 4</option></select>
+                </div>
+            </div>
+
+            <div class="panel-section" style="background: #fff; flex: 1;">
+                <div class="panel-title"><span>2. Crop & Upload</span></div>
+                <div class="task-area" id="taskArea">
+                    <img id="cropPreview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+                    
+                    <label style="font-size: 0.8rem; font-weight: bold; margin-bottom: 5px; display:block;">Question ID</label>
+                    <input type="text" id="qId" placeholder="Click/Highlight ID..." style="font-weight: bold; font-size: 1.1rem; color: #2563eb; border: 2px solid #2563eb;">
+                    
+                    <div class="btn-group">
+                        <button class="clear-btn" onclick="clearAll()" title="Press Esc to clear">❌ Clear</button>
+                        <button id="uploadBtn" class="upload-btn" onclick="uploadImage()">⬆️ Upload</button>
+                    </div>
+                </div>
+                <div style="margin-top:10px; font-size:0.8rem; color:#666; text-align: center;">Press <span class="kbd">Enter</span> to Upload</div>
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-title">
+                    <span>Recent History (Unique: <strong id="uniqueCount">0</strong>)</span>
+                    <button onclick="clearHistory()" style="background:none; border:none; color:#ef4444; font-size:0.7rem; cursor:pointer;">Clear</button>
+                </div>
+                <ul id="historyList" class="history-list"></ul>
             </div>
         </div>
     </div>
 
-    <script>
-        // CONFIG
-        const REPO_OWNER = 'nik-ma';
-        const REPO_NAME = 'images';
-        let recentUploads = [];
+    <div id="reportModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('reportModal').style.display='none'">&times;</span>
+            <h3>📊 Daily Upload Report</h3>
+            <div id="reportStatus">Loading data from GitHub...</div>
+            <table id="reportTable" style="display:none; width:100%; margin-top:10px; border-collapse:collapse;">
+                <thead><tr style="background:#f0f0f0;"><th style="padding:8px; border:1px solid #ddd;">Worker</th><th style="padding:8px; border:1px solid #ddd;">Count</th></tr></thead>
+                <tbody id="reportBody"></tbody>
+            </table>
+        </div>
+    </div>
 
-        // Populate year dropdown from 2010 to current year
-        const yearSelect = document.getElementById('examYear');
-        const currentYear = new Date().getFullYear();
-        for (let y = currentYear; y >= 2010; y--) {
-            const opt = document.createElement('option');
-            opt.value = y;
-            opt.textContent = y;
-            yearSelect.appendChild(opt);
-        }
+<script>
+    const CONFIG = { repoOwner: 'nik-ma', repoName: 'images' };
+    let pdfDoc = null, pageNum = 1, scale = 1.5, canvas = document.getElementById('pdfCanvas'), ctx = canvas.getContext('2d'), viewport = null;
+    let isSelecting = false, startX, startY, rect = {}, blobToSend = null;
+    
+    // TRACKING SET FOR TODAY
+    let uploadedIDs = new Set(); 
 
-        // PREVIEW IMAGE
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if(file){
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('imagePreview').src = e.target.result;
-                }
-                reader.readAsDataURL(file);
+    window.onload = function() {
+        populateYears(); loadConfig(); renderHistory();
+        document.getElementById('pdfInput').addEventListener('change', loadPDF);
+        
+        const wrapper = document.getElementById('canvasWrapper');
+        wrapper.addEventListener('mousedown', startSelection);
+        wrapper.addEventListener('mousemove', updateSelection);
+        window.addEventListener('mouseup', endSelection);
+        document.addEventListener('mouseup', handleTextSelection); 
+
+        // --- KEYBOARD LISTENERS ---
+        document.addEventListener('keydown', function(e) {
+            // 1. Enter = Upload
+            if (e.key === 'Enter' && !document.getElementById('uploadBtn').disabled) {
+                if(document.getElementById('qId').value && blobToSend) uploadImage();
+            }
+            // 2. Esc = Clear
+            if (e.key === 'Escape') clearAll();
+            
+            // 3. Arrow Navigation (Simple: Left/Right)
+            // Check if user is NOT typing in the Input box
+            if (document.activeElement.tagName !== 'INPUT') {
+                if (e.key === 'ArrowRight') changePage(1);
+                if (e.key === 'ArrowLeft') changePage(-1);
+            }
+            
+            // 4. Ctrl = Text Mode
+            if (e.key === 'Control' || e.key === 'Meta') {
+                document.getElementById('canvasWrapper').classList.add('text-mode');
             }
         });
 
-        function updateRecentUploads(imageData, path, cdnUrl) {
-            recentUploads.unshift({ imageData, path, cdnUrl, time: new Date().toLocaleTimeString() });
-            if (recentUploads.length > 5) recentUploads.pop();
-            
-            const container = document.getElementById('recentUploads');
-            if (recentUploads.length === 0) {
-                container.innerHTML = '<p class="no-uploads">No uploads yet. Start uploading!</p>';
-                return;
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'Control' || e.key === 'Meta') {
+                document.getElementById('canvasWrapper').classList.remove('text-mode');
             }
-            
-            container.innerHTML = recentUploads.map((item, idx) => `
-                <div class="upload-item">
-                    <img src="${item.imageData}" alt="Upload ${idx + 1}">
-                    <div class="upload-item-info">
-                        <p class="filename">${item.path.split('/').pop()}</p>
-                        <p>${item.path}</p>
-                        <p>⏰ ${item.time}</p>
-                        <a href="${item.cdnUrl}" target="_blank">View CDN →</a>
-                    </div>
-                </div>
-            `).join('');
-        }
+        });
+    };
 
-        async function uploadImage() {
-            const statusDiv = document.getElementById('status');
-            statusDiv.style.display = 'block';
-            statusDiv.className = ''; 
-            statusDiv.textContent = 'Preparing upload...';
+    // --- MANAGER REPORT ---
+    async function showReport() {
+        const token = document.getElementById('ghToken').value;
+        if(!token) { alert("Need GitHub token"); return; }
+        document.getElementById('reportModal').style.display = 'block';
+        document.getElementById('reportStatus').innerText = "Scanning commits...";
+        document.getElementById('reportTable').style.display = 'none';
 
-            const token = document.getElementById('githubToken').value;
-            const exam = document.getElementById('examName').value;
-            const year = document.getElementById('examYear').value;
-            const tier = document.getElementById('tier').value;
-            const examDateInput = document.getElementById('examDate').value;
-            const shift = document.getElementById('shift').value;
-            const lang = document.getElementById('lang').value;
-            const qId = document.getElementById('qId').value;
-            const suffix = document.getElementById('fileSuffix').value;
-            const fileInput = document.getElementById('fileInput');
-
-            if (!token || !qId || !examDateInput || !fileInput.files[0]) {
-                statusDiv.className = 'error';
-                statusDiv.textContent = 'Error: Token, Exam Date, Question ID, and File are required.';
-                return;
-            }
-
-            const dateParts = examDateInput.split('-');
-            const examDate = `${dateParts[2]}_${dateParts[1]}_${dateParts[0]}`;
-            
-            let fileName = `${qId}`;
-            if (suffix !== 'base') fileName += `_${suffix}`;
-            fileName += `.png`;
-
-            const path = `ssc/${exam}/${year}/${tier}/${examDate}/${shift}/${lang}/${fileName}`;
-            const apiUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`;
-
-            const file = fileInput.files[0];
-            const toBase64 = file => new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = error => reject(error);
+        const today = new Date(); today.setUTCHours(0,0,0,0); const since = today.toISOString();
+        try {
+            const url = `https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/commits?since=${since}&per_page=100`;
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            const commits = await res.json();
+            const counts = {};
+            commits.forEach(c => {
+                const msg = c.commit.message;
+                const match = msg.match(/User:\s*([^\)]+)/);
+                const user = match ? match[1] : 'Unknown';
+                counts[user] = (counts[user] || 0) + 1;
             });
+            const tbody = document.getElementById('reportBody'); tbody.innerHTML = '';
+            for (const [user, count] of Object.entries(counts)) tbody.innerHTML += `<tr><td style="padding:8px;border:1px solid #ddd;">${user}</td><td style="padding:8px;border:1px solid #ddd;"><strong>${count}</strong></td></tr>`;
+            document.getElementById('reportStatus').innerText = ""; document.getElementById('reportTable').style.display = 'table';
+        } catch(e) { document.getElementById('reportStatus').innerText = "Error: " + e.message; }
+    }
 
-            try {
-                const base64Content = await toBase64(file);
-                const imageDataUrl = document.getElementById('imagePreview').src;
+    // --- HISTORY & COUNTING ---
+    function renderHistory() {
+        const history = JSON.parse(localStorage.getItem('ssc_upload_history') || '[]');
+        
+        // Rebuild the Set of uploaded IDs for today to keep count accurate on refresh
+        uploadedIDs = new Set();
+        history.forEach(item => uploadedIDs.add(item.id));
+        document.getElementById('uniqueCount').innerText = uploadedIDs.size;
 
-                let sha = null;
-                try {
-                    const checkRes = await fetch(apiUrl, {
-                        method: 'GET',
-                        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
-                    });
-                    if (checkRes.ok) {
-                        const data = await checkRes.json();
-                        sha = data.sha;
-                    }
-                } catch (e) {}
+        const list = document.getElementById('historyList'); list.innerHTML = '';
+        if (history.length === 0) { list.innerHTML = '<li style="color:#999;font-size:0.8rem;text-align:center;padding:10px;">No uploads</li>'; return; }
+        history.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'history-item';
+            li.innerHTML = `<span style="color:#2563eb;font-weight:600;">✅ ${item.id}</span> <span style="color:#999;">${item.time}</span>`;
+            list.appendChild(li);
+        });
+    }
 
-                const payload = { message: `Add/Update ${exam} ${year} ${qId} (${lang})`, content: base64Content };
-                if (sha) payload.sha = sha;
+    function addToHistory(id) {
+        const history = JSON.parse(localStorage.getItem('ssc_upload_history') || '[]');
+        
+        // Check duplicate BEFORE adding to history (Visually)
+        // Note: We track unique counts separately, but history shows all actions
+        history.unshift({ id: id, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+        if (history.length > 5) history.pop();
+        
+        // Add to Set for counting
+        uploadedIDs.add(id);
+        
+        localStorage.setItem('ssc_upload_history', JSON.stringify(history));
+        renderHistory();
+    }
 
-                statusDiv.textContent = 'Uploading...';
-                
-                const response = await fetch(apiUrl, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+    function clearHistory() { if(confirm('Clear history?')) { localStorage.removeItem('ssc_upload_history'); uploadedIDs.clear(); renderHistory(); } }
+
+    // --- TEXT HANDLING ---
+    function attachTextListeners(textLayerDiv) {
+        setTimeout(() => {
+            const spans = textLayerDiv.querySelectorAll('span');
+            spans.forEach(span => {
+                span.addEventListener('click', (e) => {
+                    const wrapper = document.getElementById('canvasWrapper');
+                    if (!wrapper.classList.contains('text-mode')) return;
+                    processTextSelection(e.target.innerText);
                 });
+            });
+        }, 500);
+    }
+    
+    function handleTextSelection() {
+        const wrapper = document.getElementById('canvasWrapper');
+        if (!wrapper.classList.contains('text-mode')) return;
+        const selection = window.getSelection().toString().trim();
+        if (selection.length > 0) processTextSelection(selection);
+    }
 
-                const result = await response.json();
-
-                if (response.ok) {
-                    statusDiv.className = 'success';
-                    const cdnUrl = `https://cdn.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}/${path}`;
-                    const purgeUrl = `https://purge.jsdelivr.net/gh/${REPO_OWNER}/${REPO_NAME}/${path}`;
-                    statusDiv.innerHTML = `✅ Uploaded! <a href="${cdnUrl}" target="_blank">CDN</a> | <a href="${purgeUrl}" target="_blank">Purge Cache</a>`;
-                    
-                    updateRecentUploads(imageDataUrl, path, cdnUrl);
-                    fileInput.value = '';
-                    document.getElementById('imagePreview').src = '';
-                } else {
-                    throw new Error(result.message || 'Upload failed');
-                }
-
-            } catch (error) {
-                statusDiv.className = 'error';
-                statusDiv.textContent = `❌ Error: ${error.message}`;
-            }
+    function processTextSelection(text) {
+        const numbers = text.match(/\d+/g);
+        if (numbers) {
+            const bestMatch = numbers.sort((a, b) => b.length - a.length)[0];
+            const qIdInput = document.getElementById('qId');
+            qIdInput.value = bestMatch;
+            qIdInput.classList.add('auto-filled');
+            document.getElementById('taskArea').classList.add('flash');
+            setTimeout(() => { qIdInput.classList.remove('auto-filled'); document.getElementById('taskArea').classList.remove('flash'); }, 500);
+            document.getElementById('uploadBtn').focus();
         }
-    </script>
+    }
+
+    // --- CORE ---
+    function clearAll() {
+        document.getElementById('cropPreview').src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+        blobToSend = null; document.getElementById('qId').value = "";
+        const box = document.getElementById('selectionBox'); box.style.display = 'none'; box.style.width = '0px'; box.style.height = '0px';
+    }
+
+    function populateYears() {
+        const sel = document.getElementById('year'); const curr = new Date().getFullYear();
+        for(let i=curr; i>=2018; i--) { let opt = document.createElement('option'); opt.value = i; opt.text = i; sel.appendChild(opt); }
+    }
+    
+    async function loadPDF(e) {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = async function(ev) {
+            pdfDoc = await pdfjsLib.getDocument(new Uint8Array(ev.target.result)).promise;
+            renderPage(1);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    async function renderPage(num) {
+        if(!pdfDoc) return; pageNum = num;
+        const page = await pdfDoc.getPage(num);
+        viewport = page.getViewport({ scale: scale });
+        canvas.height = viewport.height; canvas.width = viewport.width;
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        const textContent = await page.getTextContent();
+        const textLayerDiv = document.getElementById('textLayer');
+        textLayerDiv.innerHTML = ''; textLayerDiv.style.width = `${viewport.width}px`; textLayerDiv.style.height = `${viewport.height}px`;
+        textLayerDiv.style.setProperty('--scale-factor', scale);
+        
+        await pdfjsLib.renderTextLayer({ textContentSource: textContent, container: textLayerDiv, viewport: viewport, textDivs: [] }).promise;
+        attachTextListeners(textLayerDiv);
+
+        document.getElementById('pageIndicator').innerText = `${num} / ${pdfDoc.numPages}`;
+        document.getElementById('selectionBox').style.display = 'none';
+    }
+
+    function changePage(delta) {
+        const newPage = pageNum + delta;
+        if(newPage >= 1 && newPage <= pdfDoc.numPages) renderPage(newPage);
+    }
+    
+    function zoom(delta) { scale = Math.max(0.5, scale + delta); renderPage(pageNum); }
+
+    function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        return { x: (e.clientX - rect.left) * (canvas.width / rect.width), y: (e.clientY - rect.top) * (canvas.height / rect.height) };
+    }
+    
+    function startSelection(e) {
+        if (e.ctrlKey || e.metaKey) return;
+        isSelecting = true;
+        const pos = getMousePos(e); startX = pos.x; startY = pos.y;
+        const box = document.getElementById('selectionBox');
+        box.style.display = 'block'; box.style.left = (e.clientX - canvas.getBoundingClientRect().left)+'px'; box.style.top = (e.clientY - canvas.getBoundingClientRect().top)+'px'; box.style.width = '0px'; box.style.height = '0px';
+    }
+    
+    function updateSelection(e) {
+        if(!isSelecting) return;
+        const pos = getMousePos(e);
+        rect = { x: Math.min(startX, pos.x), y: Math.min(startY, pos.y), w: Math.abs(pos.x - startX), h: Math.abs(pos.y - startY) };
+        const canvasRect = canvas.getBoundingClientRect();
+        const scaleX = canvasRect.width / canvas.width; const scaleY = canvasRect.height / canvas.height;
+        const box = document.getElementById('selectionBox');
+        box.style.left = (rect.x * scaleX) + 'px'; box.style.top = (rect.y * scaleY) + 'px'; box.style.width = (rect.w * scaleX) + 'px'; box.style.height = (rect.h * scaleY) + 'px';
+    }
+    
+    async function endSelection() {
+        if(!isSelecting) return; isSelecting = false;
+        if(rect.w < 10 || rect.h < 10) return;
+        const tempCanvas = document.createElement('canvas'); tempCanvas.width = rect.w; tempCanvas.height = rect.h;
+        tempCanvas.getContext('2d').drawImage(canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+        document.getElementById('cropPreview').src = tempCanvas.toDataURL();
+        tempCanvas.toBlob(blob => { blobToSend = blob; }, 'image/png');
+        document.getElementById('qId').focus();
+    }
+
+    async function uploadImage() {
+        const btn = document.getElementById('uploadBtn');
+        const token = document.getElementById('ghToken').value;
+        const worker = document.getElementById('workerName').value.trim();
+        const id = document.getElementById('qId').value.trim();
+
+        if(!token) { alert("Missing Token!"); return; }
+        if(!worker) { alert("Enter Name!"); document.getElementById('workerName').focus(); return; }
+        if(!id || !blobToSend) { alert("Missing ID/Image!"); return; }
+
+        btn.disabled = true; btn.innerText = "Uploading...";
+        const exam = document.getElementById('exam').value; const year = document.getElementById('year').value;
+        const tier = document.getElementById('tier').value; const lang = document.getElementById('lang').value;
+        const d = document.getElementById('examDate').value.split('-'); 
+        if(d.length < 3) { alert("Set Date!"); btn.disabled=false; return; }
+        const dateStr = `${d[2]}_${d[1]}_${d[0]}`; 
+        const shift = document.getElementById('shift').value;
+        const filename = `${id}.png`;
+        const path = `ssc/${exam}/${year}/${tier}/${dateStr}/${shift}/${lang}/${filename}`;
+        
+        const reader = new FileReader();
+        reader.readAsDataURL(blobToSend);
+        reader.onloadend = async function() {
+            const base64data = reader.result.split(',')[1];
+            try {
+                let sha = null;
+                const checkReq = await fetch(`https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/contents/${path}`, { headers: { Authorization: `Bearer ${token}` } });
+                if(checkReq.ok) { sha = (await checkReq.json()).sha; }
+
+                // Check duplicate locally before upload to avoid increment if not needed
+                const isDuplicate = uploadedIDs.has(id);
+                
+                const putBody = { message: `Upload ${filename} (User: ${worker})`, content: base64data };
+                if(sha) putBody.sha = sha;
+
+                const res = await fetch(`https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/contents/${path}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(putBody) });
+
+                if(res.ok) {
+                    addToHistory(id); 
+                    clearAll();
+                } else { throw new Error("GitHub Error"); }
+            } catch(e) { alert("Error: " + e); } 
+            finally { btn.disabled = false; btn.innerText = "⬆️ Upload"; }
+        };
+    }
+
+    function saveConfig() { const ids = ['ghToken', 'workerName', 'exam', 'year', 'tier', 'lang', 'examDate', 'shift']; const data = {}; ids.forEach(id => data[id] = document.getElementById(id).value); localStorage.setItem('ssc_cropper_cfg', JSON.stringify(data)); }
+    function loadConfig() { const data = JSON.parse(localStorage.getItem('ssc_cropper_cfg')); if(data) { for(let key in data) { if(document.getElementById(key)) document.getElementById(key).value = data[key]; } } }
+</script>
 </body>
 </html>
