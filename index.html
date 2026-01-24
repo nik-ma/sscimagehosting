@@ -8,6 +8,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+    
+    <!-- Tesseract.js for OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
     <style>
         :root { --primary: #2563eb; --bg: #f3f4f6; --text: #1f2937; }
@@ -75,6 +78,10 @@
         .hidden { display: none; }
         .mode-indicator { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: #2563eb; color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 300; }
         .canvas-wrapper.text-mode + .mode-indicator { opacity: 1; }
+        .canvas-wrapper.ocr-mode + .mode-indicator { opacity: 1; background: #10b981; }
+        .canvas-wrapper.ocr-mode { cursor: crosshair; }
+        .ocr-loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 8px; z-index: 400; display: none; }
+        .ocr-loading.active { display: block; }
         .auto-filled { border-color: #10b981 !important; background-color: #ecfdf5; transition: 0.3s; }
 
         /* History List */
@@ -83,8 +90,19 @@
         
         /* Modal */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); }
-        .modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 400px; border-radius: 8px; }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 400px; border-radius: 8px; }
+        #myUploadsModal .modal-content { width: 90%; max-width: 1200px; }
         .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: #000; }
+        
+        /* Image Grid */
+        .upload-item { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; transition: transform 0.2s, box-shadow 0.2s; }
+        .upload-item:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .upload-item-image { width: 100%; height: 150px; object-fit: contain; background: #f9fafb; border-radius: 4px; margin-bottom: 8px; cursor: pointer; }
+        .upload-item-id { font-weight: 600; color: #2563eb; font-size: 0.9rem; margin-bottom: 4px; cursor: pointer; user-select: none; padding: 4px 8px; border-radius: 4px; display: inline-block; transition: background 0.2s; }
+        .upload-item-id:hover { background: #eff6ff; }
+        .upload-item-id:active { background: #dbeafe; }
+        .upload-item-time { font-size: 0.75rem; color: #6b7280; }
     </style>
 </head>
 <body>
@@ -92,8 +110,10 @@
     <header>
         <h2>⚡ SSC Cropper <span class="badge">V4.1</span></h2>
         <div style="display:flex; gap:15px; align-items:center;">
+            <button onclick="showMyUploads()" style="background:#2563eb; border:none; color:white; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:0.8rem;">🖼️ My Uploads</button>
             <button onclick="showReport()" style="background:#4b5563; border:none; color:white; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:0.8rem;">📊 Report</button>
-            <span style="font-size: 0.85rem; opacity: 0.9;">Hold <span class="kbd">Ctrl</span> to Select • <span class="kbd">Esc</span> to Clear</span>
+            <button id="ocrModeBtn" onclick="toggleOCRMode()" style="background:#10b981; border:none; color:white; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:0.8rem;">🔍 OCR Mode</button>
+            <span style="font-size: 0.85rem; opacity: 0.9;">Hold <span class="kbd">Ctrl</span> for Text • <span class="kbd">W</span> or <span class="kbd">Ctrl+W</span> for OCR • <span class="kbd">Esc</span> to Clear</span>
         </div>
     </header>
 
@@ -105,7 +125,13 @@
                 <div id="selectionBox"></div>
             </div>
             
-            <div class="mode-indicator">TEXT MODE: Highlight or Click ID</div>
+            <div class="mode-indicator" id="modeIndicator">TEXT MODE: Highlight or Click ID</div>
+            <div class="ocr-loading" id="ocrLoading">
+                <div style="text-align:center;">
+                    <div style="font-size:1.2rem; margin-bottom:10px;">🔍 Reading Text...</div>
+                    <div style="font-size:0.9rem; opacity:0.8;" id="ocrProgress">Initializing OCR...</div>
+                </div>
+            </div>
 
             <div class="pdf-controls">
                 <label for="pdfInput" style="cursor: pointer;" title="Open PDF">📂</label>
@@ -178,6 +204,15 @@
         </div>
     </div>
 
+    <div id="myUploadsModal" class="modal" onclick="if(event.target === this) document.getElementById('myUploadsModal').style.display='none'">
+        <div class="modal-content" style="max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
+            <span class="close" onclick="document.getElementById('myUploadsModal').style.display='none'">&times;</span>
+            <h3>🖼️ My Recent Uploads (Last 30)</h3>
+            <div id="myUploadsStatus" style="text-align:center; padding:20px; color:#666;">Loading...</div>
+            <div id="myUploadsGrid" style="display:none; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:15px; margin-top:20px;"></div>
+        </div>
+    </div>
+
 <script>
     const CONFIG = { repoOwner: 'nik-ma', repoName: 'images' };
     let pdfDoc = null, pageNum = 1, scale = 1.5, canvas = document.getElementById('pdfCanvas'), ctx = canvas.getContext('2d'), viewport = null;
@@ -214,13 +249,50 @@
             
             // 4. Ctrl = Text Mode
             if (e.key === 'Control' || e.key === 'Meta') {
-                document.getElementById('canvasWrapper').classList.add('text-mode');
+                const wrapper = document.getElementById('canvasWrapper');
+                wrapper.classList.add('text-mode');
+                wrapper.classList.remove('ocr-mode'); // Disable OCR when text mode is on
+                updateModeIndicator('text');
+                // Ensure text layer is interactive
+                const textLayer = document.getElementById('textLayer');
+                if (textLayer) {
+                    textLayer.style.pointerEvents = 'auto';
+                }
+            }
+            
+            // 5. Ctrl+W or W = OCR Mode (toggle)
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
+                // Ctrl+W always works, regardless of focus
+                e.preventDefault();
+                e.stopPropagation();
+                toggleOCRMode();
+            } else if (e.key === 'w' || e.key === 'W') {
+                // W key - works even when input is focused
+                const activeEl = document.activeElement;
+                if (activeEl.tagName === 'INPUT' && activeEl.id === 'qId') {
+                    // If in ID input, prevent typing and toggle OCR
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleOCRMode();
+                    // Blur the input so it doesn't interfere
+                    activeEl.blur();
+                } else if (activeEl.tagName !== 'INPUT') {
+                    // If not in any input, just toggle
+                    toggleOCRMode();
+                }
             }
         });
 
         document.addEventListener('keyup', function(e) {
             if (e.key === 'Control' || e.key === 'Meta') {
-                document.getElementById('canvasWrapper').classList.remove('text-mode');
+                const wrapper = document.getElementById('canvasWrapper');
+                wrapper.classList.remove('text-mode');
+                updateModeIndicator('none');
+                // Disable text layer interaction
+                const textLayer = document.getElementById('textLayer');
+                if (textLayer) {
+                    textLayer.style.pointerEvents = 'none';
+                }
             }
         });
     };
@@ -312,6 +384,106 @@
         }
     }
 
+    // --- MY UPLOADS MODAL ---
+    function showMyUploads() {
+        const worker = document.getElementById('workerName').value.trim();
+        if (!worker) {
+            alert("Please enter your name first!");
+            document.getElementById('workerName').focus();
+            return;
+        }
+        
+        document.getElementById('myUploadsModal').style.display = 'block';
+        document.getElementById('myUploadsStatus').style.display = 'block';
+        document.getElementById('myUploadsStatus').innerText = 'Loading your uploads...';
+        document.getElementById('myUploadsGrid').style.display = 'none';
+        
+        // Get uploads from localStorage
+        const allUploads = JSON.parse(localStorage.getItem('ssc_my_uploads') || '[]');
+        const myUploads = allUploads
+            .filter(u => u.worker === worker)
+            .slice(0, 30); // Last 30
+        
+        document.getElementById('myUploadsStatus').style.display = 'none';
+        document.getElementById('myUploadsGrid').style.display = 'grid';
+        
+        const grid = document.getElementById('myUploadsGrid');
+        grid.innerHTML = '';
+        
+        if (myUploads.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#666;">No uploads found. Start uploading images to see them here!</div>';
+            return;
+        }
+        
+        myUploads.forEach(upload => {
+            const item = document.createElement('div');
+            item.className = 'upload-item';
+            
+            // Create image
+            const img = document.createElement('img');
+            img.src = upload.image;
+            img.alt = `ID ${upload.id}`;
+            img.className = 'upload-item-image';
+            img.onerror = function() {
+                this.src = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'150\'%3E%3Crect fill=\'%23f3f4f6\' width=\'200\' height=\'150\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dy=\'.3em\' fill=\'%239ca3af\' font-family=\'sans-serif\' font-size=\'14\'%3EImage not found%3C/text%3E%3C/svg%3E';
+            };
+            
+            // Create ID div with click handler
+            const idDiv = document.createElement('div');
+            idDiv.className = 'upload-item-id';
+            idDiv.textContent = `ID: ${upload.id}`;
+            idDiv.title = 'Click to copy ID and fill in input field';
+            idDiv.onclick = function(e) {
+                e.stopPropagation();
+                // Copy to clipboard
+                navigator.clipboard.writeText(upload.id).then(() => {
+                    // Visual feedback
+                    const originalText = idDiv.textContent;
+                    idDiv.textContent = '✓ Copied!';
+                    idDiv.style.color = '#10b981';
+                    setTimeout(() => {
+                        idDiv.textContent = originalText;
+                        idDiv.style.color = '#2563eb';
+                    }, 1000);
+                    
+                    // Also fill in the input field
+                    document.getElementById('qId').value = upload.id;
+                    document.getElementById('qId').focus();
+                }).catch(() => {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = upload.id;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    const originalText = idDiv.textContent;
+                    idDiv.textContent = '✓ Copied!';
+                    idDiv.style.color = '#10b981';
+                    setTimeout(() => {
+                        idDiv.textContent = originalText;
+                        idDiv.style.color = '#2563eb';
+                    }, 1000);
+                    
+                    document.getElementById('qId').value = upload.id;
+                    document.getElementById('qId').focus();
+                });
+            };
+            
+            // Create time div
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'upload-item-time';
+            timeDiv.textContent = upload.time;
+            
+            // Append all elements
+            item.appendChild(img);
+            item.appendChild(idDiv);
+            item.appendChild(timeDiv);
+            grid.appendChild(item);
+        });
+    }
+
     // --- HISTORY & COUNTING ---
     function renderHistory() {
         const history = JSON.parse(localStorage.getItem('ssc_upload_history') || '[]');
@@ -331,8 +503,9 @@
         });
     }
 
-    function addToHistory(id) {
+    function addToHistory(id, imagePreview = null) {
         const history = JSON.parse(localStorage.getItem('ssc_upload_history') || '[]');
+        const worker = document.getElementById('workerName').value.trim();
         
         // Check duplicate BEFORE adding to history (Visually)
         // Note: We track unique counts separately, but history shows all actions
@@ -342,6 +515,38 @@
         // Add to Set for counting
         uploadedIDs.add(id);
         
+        // Store image data for "My Uploads" modal
+        if (imagePreview && worker) {
+            const uploads = JSON.parse(localStorage.getItem('ssc_my_uploads') || '[]');
+            
+            // Add new upload
+            uploads.unshift({
+                id: id,
+                worker: worker,
+                image: imagePreview, // base64 data URL
+                timestamp: new Date().toISOString(),
+                time: new Date().toLocaleString()
+            });
+            
+            // Keep only last 30 per worker - separate by worker, keep latest 30, then merge back
+            const workers = {};
+            uploads.forEach(u => {
+                if (!workers[u.worker]) workers[u.worker] = [];
+                workers[u.worker].push(u);
+            });
+            
+            const finalUploads = [];
+            Object.keys(workers).forEach(w => {
+                const workerUploads = workers[w].slice(0, 30); // Keep only last 30
+                finalUploads.push(...workerUploads);
+            });
+            
+            // Sort by timestamp (newest first) for consistency
+            finalUploads.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            localStorage.setItem('ssc_my_uploads', JSON.stringify(finalUploads));
+        }
+        
         localStorage.setItem('ssc_upload_history', JSON.stringify(history));
         renderHistory();
     }
@@ -350,16 +555,77 @@
 
     // --- TEXT HANDLING ---
     function attachTextListeners(textLayerDiv) {
-        setTimeout(() => {
+        // Try multiple times with increasing delays to catch all text spans
+        const tryAttach = (attempt = 0) => {
             const spans = textLayerDiv.querySelectorAll('span');
+            
+            if (spans.length === 0 && attempt < 3) {
+                // If no spans found, try again after a delay
+                setTimeout(() => tryAttach(attempt + 1), 300);
+                return;
+            }
+            
             spans.forEach(span => {
-                span.addEventListener('click', (e) => {
+                // Remove existing listeners to avoid duplicates
+                const newSpan = span.cloneNode(true);
+                span.parentNode.replaceChild(newSpan, span);
+                
+                // Make sure span is clickable
+                newSpan.style.cursor = 'pointer';
+                newSpan.style.userSelect = 'text';
+                
+                newSpan.addEventListener('click', (e) => {
+                    e.stopPropagation();
                     const wrapper = document.getElementById('canvasWrapper');
                     if (!wrapper.classList.contains('text-mode')) return;
-                    processTextSelection(e.target.innerText);
+                    
+                    const text = e.target.innerText || e.target.textContent || '';
+                    if (text.trim()) {
+                        processTextSelection(text);
+                    }
+                });
+                
+                // Also handle double-click for better reliability
+                newSpan.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    const wrapper = document.getElementById('canvasWrapper');
+                    if (!wrapper.classList.contains('text-mode')) return;
+                    
+                    const text = e.target.innerText || e.target.textContent || '';
+                    if (text.trim()) {
+                        processTextSelection(text);
+                    }
                 });
             });
-        }, 500);
+            
+            // Also attach to the entire text layer as fallback
+            if (attempt === 0) {
+                textLayerDiv.addEventListener('click', (e) => {
+                    const wrapper = document.getElementById('canvasWrapper');
+                    if (!wrapper.classList.contains('text-mode')) return;
+                    
+                    // Try to get text from clicked element
+                    let target = e.target;
+                    let text = '';
+                    
+                    // Try multiple ways to get text
+                    if (target.innerText) text = target.innerText;
+                    else if (target.textContent) text = target.textContent;
+                    else if (target.closest('span')) {
+                        text = target.closest('span').innerText || target.closest('span').textContent;
+                    }
+                    
+                    if (text.trim()) {
+                        processTextSelection(text);
+                    }
+                }, true); // Use capture phase
+            }
+        };
+        
+        // Start with initial delay, then retry if needed
+        setTimeout(() => tryAttach(0), 100);
+        setTimeout(() => tryAttach(0), 500);
+        setTimeout(() => tryAttach(0), 1000);
     }
     
     function handleTextSelection() {
@@ -370,15 +636,48 @@
     }
 
     function processTextSelection(text) {
-        const numbers = text.match(/\d+/g);
-        if (numbers) {
+        if (!text || typeof text !== 'string') return;
+        
+        // Clean the text - remove extra whitespace and special characters
+        text = text.trim().replace(/\s+/g, ' ');
+        
+        // Try to find numbers - look for patterns like "ID: 123" or "Q.123" or just numbers
+        let numbers = text.match(/\d+/g);
+        
+        // If no numbers found, try to extract from common patterns
+        if (!numbers || numbers.length === 0) {
+            // Try patterns like "ID:123", "Q123", "Question 123", etc.
+            const patterns = [
+                /(?:id|ID|Id)[\s:]*(\d+)/i,
+                /(?:q|Q|question|Question)[\s.]*(\d+)/i,
+                /(\d{2,})/g  // At least 2 digits
+            ];
+            
+            for (const pattern of patterns) {
+                const match = text.match(pattern);
+                if (match) {
+                    numbers = [match[1] || match[0]];
+                    break;
+                }
+            }
+        }
+        
+        if (numbers && numbers.length > 0) {
+            // Get the longest number (most likely to be the ID)
             const bestMatch = numbers.sort((a, b) => b.length - a.length)[0];
-            const qIdInput = document.getElementById('qId');
-            qIdInput.value = bestMatch;
-            qIdInput.classList.add('auto-filled');
-            document.getElementById('taskArea').classList.add('flash');
-            setTimeout(() => { qIdInput.classList.remove('auto-filled'); document.getElementById('taskArea').classList.remove('flash'); }, 500);
-            document.getElementById('uploadBtn').focus();
+            
+            // Only use if it's at least 2 digits (to avoid single digits)
+            if (bestMatch.length >= 2) {
+                const qIdInput = document.getElementById('qId');
+                qIdInput.value = bestMatch;
+                qIdInput.classList.add('auto-filled');
+                document.getElementById('taskArea').classList.add('flash');
+                setTimeout(() => { 
+                    qIdInput.classList.remove('auto-filled'); 
+                    document.getElementById('taskArea').classList.remove('flash'); 
+                }, 500);
+                document.getElementById('uploadBtn').focus();
+            }
         }
     }
 
@@ -411,13 +710,37 @@
         canvas.height = viewport.height; canvas.width = viewport.width;
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
-        const textContent = await page.getTextContent();
         const textLayerDiv = document.getElementById('textLayer');
-        textLayerDiv.innerHTML = ''; textLayerDiv.style.width = `${viewport.width}px`; textLayerDiv.style.height = `${viewport.height}px`;
+        textLayerDiv.innerHTML = ''; // Clear previous content
+        textLayerDiv.style.width = `${viewport.width}px`; 
+        textLayerDiv.style.height = `${viewport.height}px`;
         textLayerDiv.style.setProperty('--scale-factor', scale);
         
-        await pdfjsLib.renderTextLayer({ textContentSource: textContent, container: textLayerDiv, viewport: viewport, textDivs: [] }).promise;
-        attachTextListeners(textLayerDiv);
+        try {
+            const textContent = await page.getTextContent();
+            
+            // Check if text content exists
+            if (textContent && textContent.items && textContent.items.length > 0) {
+                await pdfjsLib.renderTextLayer({ 
+                    textContentSource: textContent, 
+                    container: textLayerDiv, 
+                    viewport: viewport, 
+                    textDivs: [] 
+                }).promise;
+                
+                // Ensure text layer is visible and interactive when in text mode
+                textLayerDiv.style.pointerEvents = 'none'; // Default: disabled
+                
+                attachTextListeners(textLayerDiv);
+            } else {
+                // PDF has no extractable text - show message
+                console.warn('PDF page has no extractable text content');
+                textLayerDiv.innerHTML = '<div style="position:absolute;top:10px;left:10px;background:rgba(255,0,0,0.1);padding:5px;border-radius:4px;font-size:12px;color:#666;">No text layer available</div>';
+            }
+        } catch (error) {
+            console.error('Error rendering text layer:', error);
+            // Continue even if text layer fails
+        }
 
         document.getElementById('pageIndicator').innerText = `${num} / ${pdfDoc.numPages}`;
         document.getElementById('selectionBox').style.display = 'none';
@@ -456,11 +779,117 @@
     async function endSelection() {
         if(!isSelecting) return; isSelecting = false;
         if(rect.w < 10 || rect.h < 10) return;
-        const tempCanvas = document.createElement('canvas'); tempCanvas.width = rect.w; tempCanvas.height = rect.h;
-        tempCanvas.getContext('2d').drawImage(canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
-        document.getElementById('cropPreview').src = tempCanvas.toDataURL();
-        tempCanvas.toBlob(blob => { blobToSend = blob; }, 'image/png');
-        document.getElementById('qId').focus();
+        
+        // Check if OCR mode is active FIRST
+        const wrapper = document.getElementById('canvasWrapper');
+        const isOCRMode = wrapper.classList.contains('ocr-mode');
+        
+        if (isOCRMode) {
+            // In OCR mode: Only extract text, don't crop image
+            const tempCanvas = document.createElement('canvas'); 
+            tempCanvas.width = rect.w; 
+            tempCanvas.height = rect.h;
+            tempCanvas.getContext('2d').drawImage(canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+            
+            // Run OCR without setting crop preview or blob
+            await runOCR(tempCanvas);
+        } else {
+            // Normal mode: Crop image for upload
+            const tempCanvas = document.createElement('canvas'); 
+            tempCanvas.width = rect.w; 
+            tempCanvas.height = rect.h;
+            tempCanvas.getContext('2d').drawImage(canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+            
+            // Set the image preview and blob
+            const imageDataUrl = tempCanvas.toDataURL('image/png');
+            document.getElementById('cropPreview').src = imageDataUrl;
+            tempCanvas.toBlob(blob => { blobToSend = blob; }, 'image/png');
+            
+            document.getElementById('qId').focus();
+        }
+    }
+    
+    // --- OCR FUNCTIONS ---
+    function toggleOCRMode() {
+        const wrapper = document.getElementById('canvasWrapper');
+        const btn = document.getElementById('ocrModeBtn');
+        
+        if (wrapper.classList.contains('ocr-mode')) {
+            wrapper.classList.remove('ocr-mode');
+            wrapper.classList.remove('text-mode');
+            btn.style.background = '#10b981';
+            btn.textContent = '🔍 OCR Mode';
+            updateModeIndicator('none');
+        } else {
+            wrapper.classList.add('ocr-mode');
+            wrapper.classList.remove('text-mode');
+            btn.style.background = '#ef4444';
+            btn.textContent = '❌ Exit OCR';
+            updateModeIndicator('ocr');
+            // Disable text layer when OCR is active
+            const textLayer = document.getElementById('textLayer');
+            if (textLayer) {
+                textLayer.style.pointerEvents = 'none';
+            }
+        }
+    }
+    
+    function updateModeIndicator(mode) {
+        const indicator = document.getElementById('modeIndicator');
+        if (mode === 'text') {
+            indicator.textContent = 'TEXT MODE: Highlight or Click ID';
+            indicator.style.background = '#2563eb';
+        } else if (mode === 'ocr') {
+            indicator.textContent = 'OCR MODE: Select area around ID to extract text';
+            indicator.style.background = '#10b981';
+        } else {
+            indicator.style.background = '#2563eb';
+        }
+    }
+    
+    async function runOCR(imageCanvas) {
+        const loadingDiv = document.getElementById('ocrLoading');
+        const progressDiv = document.getElementById('ocrProgress');
+        
+        try {
+            loadingDiv.classList.add('active');
+            progressDiv.textContent = 'Initializing OCR engine...';
+            
+            // Convert canvas to image data
+            const imageData = imageCanvas.toDataURL('image/png');
+            
+            progressDiv.textContent = 'Processing image...';
+            
+            // Run OCR with Tesseract.js
+            const { data: { text } } = await Tesseract.recognize(
+                imageData,
+                'eng',
+                {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const progress = Math.round(m.progress * 100);
+                            progressDiv.textContent = `Reading text... ${progress}%`;
+                        }
+                    }
+                }
+            );
+            
+            progressDiv.textContent = 'Extracting ID...';
+            
+            // Process the OCR text to extract ID
+            if (text && text.trim()) {
+                processTextSelection(text);
+            } else {
+                alert('No text found in selected area. Try selecting a larger area around the ID.');
+            }
+            
+        } catch (error) {
+            console.error('OCR Error:', error);
+            alert('OCR failed: ' + error.message);
+        } finally {
+            loadingDiv.classList.remove('active');
+            document.getElementById('qId').focus();
+        }
     }
 
     async function uploadImage() {
@@ -498,8 +927,16 @@
                 const res = await fetch(`https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/contents/${path}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(putBody) });
 
                 if(res.ok) {
-                    addToHistory(id); 
+                    // Get image preview from crop preview
+                    const imagePreview = document.getElementById('cropPreview').src;
+                    addToHistory(id, imagePreview); 
                     clearAll();
+                    
+                    // Turn off OCR mode if it's active
+                    const wrapper = document.getElementById('canvasWrapper');
+                    if (wrapper.classList.contains('ocr-mode')) {
+                        toggleOCRMode();
+                    }
                 } else { throw new Error("GitHub Error"); }
             } catch(e) { alert("Error: " + e); } 
             finally { btn.disabled = false; btn.innerText = "⬆️ Upload"; }
