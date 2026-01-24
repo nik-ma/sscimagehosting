@@ -169,7 +169,7 @@
     <div id="reportModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="document.getElementById('reportModal').style.display='none'">&times;</span>
-            <h3>📊 Daily Upload Report</h3>
+            <h3>📊 Total Upload Report (All Time)</h3>
             <div id="reportStatus">Loading data from GitHub...</div>
             <table id="reportTable" style="display:none; width:100%; margin-top:10px; border-collapse:collapse;">
                 <thead><tr style="background:#f0f0f0;"><th style="padding:8px; border:1px solid #ddd;">Worker</th><th style="padding:8px; border:1px solid #ddd;">Count</th></tr></thead>
@@ -233,22 +233,83 @@
         document.getElementById('reportStatus').innerText = "Scanning commits...";
         document.getElementById('reportTable').style.display = 'none';
 
-        const today = new Date(); today.setUTCHours(0,0,0,0); const since = today.toISOString();
         try {
-            const url = `https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/commits?since=${since}&per_page=100`;
-            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-            const commits = await res.json();
-            const counts = {};
-            commits.forEach(c => {
+            // Fetch all commits (no date filter) - paginate through all pages
+            let allCommits = [];
+            let page = 1;
+            let hasMore = true;
+            
+            while (hasMore) {
+                const url = `https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/commits?per_page=100&page=${page}`;
+                const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                const commits = await res.json();
+                
+                if (commits.length === 0 || commits.length < 100) {
+                    hasMore = false;
+                }
+                
+                allCommits = allCommits.concat(commits);
+                page++;
+                
+                // Safety limit to prevent infinite loops
+                if (page > 50) break;
+            }
+            
+            // Track unique IDs per user
+            const userUniqueIDs = {}; // { user: Set of IDs }
+            
+            allCommits.forEach(c => {
                 const msg = c.commit.message;
-                const match = msg.match(/User:\s*([^\)]+)/);
-                const user = match ? match[1] : 'Unknown';
-                counts[user] = (counts[user] || 0) + 1;
+                // Extract user from commit message: "Upload filename.png (User: username)"
+                const userMatch = msg.match(/User:\s*([^\)]+)/);
+                const user = userMatch ? userMatch[1].trim() : 'Unknown';
+                
+                // Extract ID from filename in commit message: "Upload 123.png" or from path
+                let id = null;
+                const filenameMatch = msg.match(/Upload\s+(\d+)\.png/);
+                if (filenameMatch) {
+                    id = filenameMatch[1];
+                } else {
+                    // Try to extract from file path in commit
+                    const pathMatch = msg.match(/ssc\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/(\d+)\.png/);
+                    if (pathMatch) {
+                        id = pathMatch[1];
+                    }
+                }
+                
+                // Only count if we found an ID
+                if (id) {
+                    if (!userUniqueIDs[user]) {
+                        userUniqueIDs[user] = new Set();
+                    }
+                    userUniqueIDs[user].add(id);
+                }
             });
-            const tbody = document.getElementById('reportBody'); tbody.innerHTML = '';
-            for (const [user, count] of Object.entries(counts)) tbody.innerHTML += `<tr><td style="padding:8px;border:1px solid #ddd;">${user}</td><td style="padding:8px;border:1px solid #ddd;"><strong>${count}</strong></td></tr>`;
-            document.getElementById('reportStatus').innerText = ""; document.getElementById('reportTable').style.display = 'table';
-        } catch(e) { document.getElementById('reportStatus').innerText = "Error: " + e.message; }
+            
+            // Convert Sets to counts and sort by count (descending)
+            const counts = {};
+            for (const [user, idSet] of Object.entries(userUniqueIDs)) {
+                counts[user] = idSet.size;
+            }
+            
+            const sortedUsers = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+            
+            const tbody = document.getElementById('reportBody'); 
+            tbody.innerHTML = '';
+            
+            if (sortedUsers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" style="padding:8px;border:1px solid #ddd;text-align:center;">No uploads found</td></tr>';
+            } else {
+                for (const [user, count] of sortedUsers) {
+                    tbody.innerHTML += `<tr><td style="padding:8px;border:1px solid #ddd;">${user}</td><td style="padding:8px;border:1px solid #ddd;"><strong>${count}</strong></td></tr>`;
+                }
+            }
+            
+            document.getElementById('reportStatus').innerText = ""; 
+            document.getElementById('reportTable').style.display = 'table';
+        } catch(e) { 
+            document.getElementById('reportStatus').innerText = "Error: " + e.message; 
+        }
     }
 
     // --- HISTORY & COUNTING ---
@@ -431,9 +492,6 @@
                 const checkReq = await fetch(`https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/contents/${path}`, { headers: { Authorization: `Bearer ${token}` } });
                 if(checkReq.ok) { sha = (await checkReq.json()).sha; }
 
-                // Check duplicate locally before upload to avoid increment if not needed
-                const isDuplicate = uploadedIDs.has(id);
-                
                 const putBody = { message: `Upload ${filename} (User: ${worker})`, content: base64data };
                 if(sha) putBody.sha = sha;
 
