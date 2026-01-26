@@ -336,14 +336,14 @@
                 const userMatch = msg.match(/User:\s*([^\)]+)/);
                 const user = userMatch ? userMatch[1].trim() : 'Unknown';
                 
-                // Extract ID from filename in commit message: "Upload 123.png" or from path
+                // Extract ID from filename in commit message: "Upload 123.png" or "Upload qid_A.png" or from path
                 let id = null;
-                const filenameMatch = msg.match(/Upload\s+(\d+)\.png/);
+                const filenameMatch = msg.match(/Upload\s+([^\.\s]+)\.png/);
                 if (filenameMatch) {
                     id = filenameMatch[1];
                 } else {
                     // Try to extract from file path in commit
-                    const pathMatch = msg.match(/ssc\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/(\d+)\.png/);
+                    const pathMatch = msg.match(/ssc\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/[^\/]+\/([^\.]+)\.png/);
                     if (pathMatch) {
                         id = pathMatch[1];
                     }
